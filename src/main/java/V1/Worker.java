@@ -5,15 +5,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Timer;
+import java.util.*;
 
 public class Worker {
-    private byte state = NodeState.FOLLOWER;
-    private int count;
+    private int count = 1;
     private int replicatedCount;
-    private boolean canCommit = false;
     private int term = 0;
     private int logIndex = 0;
     private ArrayList<String> serverList = new ArrayList<String>();
@@ -21,72 +17,86 @@ public class Worker {
     private ArrayList<Socket> receiveSockets = new ArrayList<Socket>();
     private int electionTimeout;
     private int heartBeatTimeout = 1000;
-    private Node node;
+    private volatile Queue<String> receivedMessage = new LinkedList<String>();
+    private volatile ServerSocket serverSocket;
 
-    private CgProtocal cgProtocal = new CgProtocal();
+    public int getPort() {
+        return port;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+        node.setPort(port);
+    }
+
+    private int port;
+
+    private volatile Node node;
+
     private Timer timer = new Timer();
+    private CgProtocal cgProtocal = new CgProtocal();
 
     public Worker() {
         node = new Node();
-        node.setState(state);
     }
-
 
     public void start() {
-        createSendSockets();
-        new ReceiveWorker().start();
+        try {
+            serverSocket = new ServerSocket(port);
+//            System.out.println(serverSocket + "\t" + port);
+            if (serverSocket != null) {
+                createSendSockets();
+                new ReceiveWorker().start();
 
-        new NodeStateWatchDog().start();
-        new TimerManger().start();
-
-    }
-
-    public void sendRequestVote() throws IOException {
-        Packet packet = new Packet();
-        byte[] vote = cgProtocal.encode(packet);
-        sendMessage(vote);
-    }
-
-    public void sendAck() throws IOException {
-        Packet packet = new Packet();
-        byte[] ack = cgProtocal.encode(packet);
-        sendMessage(ack);
-    }
-
-    public void sendHeartBeat() throws IOException {
-        Packet packet = new Packet();
-        byte[] heartBeat = cgProtocal.encode(packet);
-        sendMessage(heartBeat);
-    }
-
-
-    private void sendMessage(byte[] vote) throws IOException {
-        for (Socket socket : sendSockts) {
-            OutputStream outputStream = socket.getOutputStream();
-            outputStream.write(vote);
+                System.out.println("start changed:\t" + node.isStateIsChanged());
+                new NodeStateWatchDog().start();
+                new TimerManger().start();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
-
 
     private void createSendSockets() {
-        for (String server : serverList) {
-            String[] serverArray = server.split(":");
-            String ip = serverArray[0];
-            int port = Integer.parseInt(serverArray[1]);
-            try {
-                sendSockts.add(new Socket(ip, port));
-            } catch (Exception e) {
-                e.printStackTrace();
+        int count = serverList.size();
+
+        int i = 0;
+        while (true) {
+//            System.out.println("继续连接\t" + System.currentTimeMillis());
+            if (i == count) {
+                break;
+            }
+            for (String server : serverList) {
+                try {
+                    boolean isExists = false;
+                    String[] serverArray = server.split(":");
+                    String ip = serverArray[0];
+                    int port = Integer.parseInt(serverArray[1]);
+                    for (int k = 0; k < sendSockts.size(); k++) {
+                        Socket socket = sendSockts.get(k);
+                        if (socket.getPort() == port) {
+                            isExists = true;
+                            break;
+                        }
+                    }
+                    if (isExists) {
+                        continue;
+                    }
+                    Socket socket2 = new Socket(ip, port);
+                    sendSockts.add(socket2);
+                    i++;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }
+        node.setSendSockts(sendSockts);
     }
 
     private class ReceiveWorker extends Thread {
         @Override
         public void run() {
-            ServerSocket serverSocket;
             try {
-                serverSocket = new ServerSocket(5000);
                 while (true) {
                     Socket socket = serverSocket.accept();
                     new ReceivePacket(socket).start();
@@ -108,9 +118,15 @@ public class Worker {
         public void run() {
             while (true) {
                 int messageLength = receiveMessage();
+                try {
+                    sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
                 if (messageLength == -1) {
                     try {
-                        sleep(300);
+                        sleep(2000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
@@ -122,19 +138,103 @@ public class Worker {
             int messageLength;
             try {
                 InputStream inputStream = socket.getInputStream();
-                byte[] messageBytes = {};
+                byte[] messageBytes = new byte[1024];
                 messageLength = inputStream.read(messageBytes);
                 Packet packet = cgProtocal.decode(messageBytes);
+                if (0 == node.getPreReceiveHeartBeatTime()) {
+                    node.setPreReceiveHeartBeatTime(System.currentTimeMillis());
+                }
+                node.setCurrentReceiveHeartBeatTime(System.currentTimeMillis());
+//                System.out.println("接收信息\t" + System.currentTimeMillis() + "\t" + packet.getType());
                 if (packet.getType() == MessageType.VOTE_ACK) {
                     count++;
+                    System.out.println("接收投票信息\t" + count + "\t" + "state\t" + node.getState());
                     if (count > 2) {
-                        state = NodeState.LEADER;
+                        node.setPreState(node.getCurrentState());
+                        node.setCurrentState(NodeState.LEADER);
+                        node.setState(NodeState.LEADER);
+                        node.setStateIsChanged(node.checkNodeStateIsChanged());
+                        node.setLeaderInit(true);
+
+                        System.out.println("setStateIsChanged start");
+                        System.out.println(node.getCurrentState() + "\t" + node.getPreState() + "\t" + node.isStateIsChanged());
+                        System.out.println("setStateIsChanged end");
+
+                        HashMap<String, String> leaderInfo = new HashMap<String, String>();
+                        String ip = socket.getLocalAddress().getHostAddress();
+                        int port = socket.getPort();
+                        leaderInfo.put("ip", ip);
+                        leaderInfo.put("port", String.valueOf(port));
+                        node.setLeaderInfo(leaderInfo);
+                        System.out.println("leader \t" + System.currentTimeMillis());
                     }
                 } else if (packet.getType() == MessageType.REPLICATION_ACK) {
                     replicatedCount++;
                     if (replicatedCount > 2) {
-                        canCommit = true;
+                        node.setCanCommit(true);
                     }
+                } else if (packet.getType() == MessageType.COMMIT) {
+                    //todo commit
+                    System.out.println("commit");
+                    // commit 之后，发送 COMMIT_ACK，不用timer
+                    // 需要先找出Leader
+                    Socket socket = node.getLeaderSocket();
+                    OutputStream outputStream = socket.getOutputStream();
+                    Packet packet1 = new Packet();
+                    packet1.setType(MessageType.COMMIT_ACK);
+                    packet1.setHost("127.0.0.1");
+                    packet1.setPort(node.getPort());
+                    packet1.setMessage("");
+                    outputStream.write(cgProtocal.encode(packet1));
+                } else if (packet.getType() == MessageType.LEADER) {
+                    System.out.println("I am leader\t" + System.currentTimeMillis());
+                    node.setPreState(node.getCurrentState());
+                    node.setCurrentState(NodeState.FOLLOWER);
+                    node.setStateIsChanged(node.checkNodeStateIsChanged());
+                } else if (packet.getType() == MessageType.REQUEST_VOTE) {
+                    System.out.println("投票0\t" + "isVoted:" + node.isVoted() + "\tstate:" + node.getState());
+                    int candidateTerm = packet.getTerm();
+                    int nodeTerm = packet.getTerm();
+                    if ((candidateTerm >= nodeTerm) && (!node.isVoted())) {
+                        // 投该节点一票
+                        // 需要找出对应的服务器，此信息是哪个服务器（ip:port)发出的，根据(ip:port)找出对应的socket
+                        String ip = socket.getInetAddress().getHostAddress();
+                        int port = packet.getPort();
+                        Socket targetSocket = null;
+                        System.out.println(socket);
+                        for (int i = 0; i < sendSockts.size(); i++) {
+                            Socket socket = sendSockts.get(i);
+                            System.out.println(i + ":\t" + socket);
+                            if (port == socket.getPort()) {
+                                targetSocket = socket;
+                                break;
+                            }
+                        }
+
+                        if (targetSocket != null) {
+                            OutputStream outputStream = targetSocket.getOutputStream();
+                            Packet packet1 = new Packet();
+                            packet1.setType(MessageType.VOTE_ACK);
+                            packet1.setHost("127.0.0.1");
+                            packet1.setPort(node.getPort());
+                            packet1.setMessage("");
+                            outputStream.write(cgProtocal.encode(packet1));
+
+                            node.setTerm(candidateTerm);
+                            node.setVoted(true);
+                        }
+                    }
+                } else if (packet.getType() == MessageType.COMMAND) {
+                    // 接收到客户端命令
+                    // 写入日志
+                    System.out.println("log");
+                    // 通知其他node复制
+                    Packet packet1 = new Packet();
+                    packet1.setMessage("SET X 5");
+                    packet1.setType(MessageType.COMMAND);
+                    packet1.setHost("127.0.0.1");
+                    packet1.setPort(node.getPort());
+                    node.sendMessage(cgProtocal.encode(packet1));
                 }
 
                 return messageLength;
@@ -150,47 +250,79 @@ public class Worker {
         public void run() {
             while (true) {
                 try {
+                    System.out.println("start NodeStateWatchDog\t" + System.currentTimeMillis());
                     node.startNodeStateWatchDog();
+                    sleep(10);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
+
             }
         }
     }
 
     private class TimerManger extends Thread {
+        private boolean isStart = true;
+
         @Override
         public void run() {
+            Timer timer = new Timer();
             while (true) {
+//                System.out.println("TimerManger -1\t" + System.currentTimeMillis() + "\t");
+                if (isStart) {
+//                    System.out.println("timer start");
+                    timer = startTimer();
+                }
+                isStart = false;
                 try {
-                    node.startTimerManager();
-                    startTimer();
-                    if (Worker.this.checkNodeStateIsChanged()) {
-                        node.setFlag(true);
-                        stopTimer();
+//                    System.out.println("TimerManger 0" + "\t" + node.isStateIsChanged());
+                    if (node.isStateIsChanged()) {
+//                        System.out.println("TimerManger 1\t" + System.currentTimeMillis());
+                        node.setFlag(false);
+                        if (timer != null) {
+                            stopTimer(timer);
+                            System.out.println("stop timer");
+                        }
+
+                        isStart = true;
                     }
+                    node.startTimerManager();
+                    sleep(50);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
         }
 
-        private void startTimer() {
-            MyTask myTask = new HeartBeatTask();
-            if (Worker.this.state == NodeState.CANDIDATE) {
-                myTask = new RequestVoteTask();
-            } else if (Worker.this.state == NodeState.LEADER) {
-                myTask = new HeartBeatTask();
+        private Timer startTimer() {
+            MyTask myTask = null;
+            byte currentState = node.getCurrentState();
+            if (currentState == NodeState.CANDIDATE) {
+                myTask = new RequestVoteTask(node);
+            } else if (currentState == NodeState.LEADER) {
+                myTask = new HeartBeatTask(node, receivedMessage);
+            } else if (currentState == NodeState.FOLLOWER) {
+                myTask = new LeaderIsAliveTask(node);
             }
-            Worker.this.timer.schedule(myTask, new Date(), 2000);
+            Timer timer = new Timer();
+            if(null != myTask){
+                Random random = new Random(50);
+                timer.schedule(myTask, new Date(), 200 + random.nextInt(50));
+            }
+
+            return timer;
         }
 
-        private void stopTimer() {
+        private void stopTimer(Timer timer) {
             timer.cancel();
         }
     }
 
-    protected boolean checkNodeStateIsChanged() {
-        return true;
+    public ArrayList<String> getServerList() {
+        return serverList;
+    }
+
+    public void setServerList(ArrayList<String> serverList) {
+        this.serverList = serverList;
     }
 }

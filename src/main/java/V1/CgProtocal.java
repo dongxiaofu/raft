@@ -10,6 +10,9 @@ public class CgProtocal {
         int term = packet.getTerm();
         int index = packet.getIndex();
         byte type = packet.getType();
+        int port = packet.getPort();
+        String host = packet.getHost();
+        int hostLength = host.length();
 
         byte[] header = new byte[8];
         int contentLength = message.length();
@@ -19,27 +22,36 @@ public class CgProtocal {
 
         byte[] termBytes = intToByTe(term);
         byte[] indexBytes = intToByTe(index);
+        byte[] portBytes = intToByTe(port);
 
         byte[] content = message.getBytes();
+        byte[] hostBytes = host.getBytes();
 
-        byte[] onePacket = new byte[16 + contentLength];
+        byte[] onePacket = new byte[20 + contentLength + hostLength];
         System.arraycopy(header, 0, onePacket, 0, 8);
         System.arraycopy(termBytes, 0, onePacket, 8, 4);
         System.arraycopy(indexBytes, 0, onePacket, 12, 4);
-        System.arraycopy(content, 0, onePacket, 16, contentLength);
+        System.arraycopy(portBytes, 0, onePacket, 16, 4);
+        System.arraycopy(content, 0, onePacket, 20, contentLength);
+        System.arraycopy(hostBytes, 0, onePacket, 20 + contentLength, hostLength);
 
         return onePacket;
     }
 
     public Packet decode(byte[] messageBytes) {
-        byte[] header = Arrays.copyOfRange(messageBytes, 0, 7);
+        byte[] header = Arrays.copyOfRange(messageBytes, 0, 8);
         byte[] termBytes = Arrays.copyOfRange(messageBytes, 8, 12);
         byte[] indexBytes = Arrays.copyOfRange(messageBytes, 12, 16);
-        byte[] content = Arrays.copyOfRange(messageBytes, 16, messageBytes.length);
+        byte[] portBytes = Arrays.copyOfRange(messageBytes, 16, 20);
+        int contentLength = (int)((header[0] << 8) & 0xff) + (int)(header[1] & 0xff);
+        byte[] content = Arrays.copyOfRange(messageBytes, 20, 20 + contentLength);
+        byte[] host = Arrays.copyOfRange(messageBytes, 20 + contentLength, messageBytes.length);
 
         int term = byteToInt(termBytes);
         int index = byteToInt(indexBytes);
+        int port = byteToInt(portBytes);
         String message = new String(content);
+        String hostString = new String(host);
         byte type = header[2];
 
         Packet packet = new Packet();
@@ -47,6 +59,8 @@ public class CgProtocal {
         packet.setTerm(term);
         packet.setIndex(index);
         packet.setType(type);
+        packet.setPort(port);
+        packet.setHost(hostString);
 
         return packet;
     }

@@ -5,6 +5,8 @@ public class Packet {
     private int term;
     private int index;
     private byte type;
+    private int port;
+    private String host;
 
     public String getMessage() {
         return message;
@@ -36,5 +38,21 @@ public class Packet {
 
     public void setType(byte type) {
         this.type = type;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    public String getHost() {
+        return host;
+    }
+
+    public void setHost(String host) {
+        this.host = host;
     }
 }

@@ -67,3 +67,16 @@ follower探测leader是否正常，使用timer，timeout是heartTimout。用单�
 ===改进。另用一个线程，计算两次heartbeat的时间差，若没有接受到数据，用当前时间做现在heartbeat的时间。
 非follower，线程C休眠，follower，线程C运行，如何实现？仍取决于node state。
 
+node的初始状态是follower，经过election_timeout后，变为candidate，这个转变如何实现？
+
+
+选举出leader后，其他节点，如何知道哪个节点是leader？
+==通过heartbeat广播选举结果
+
+Leader接收客户端命令
+
+-------------
+节点投票之后，如何在新一轮选举中重设为没有投票？
+1.拉票时重设====不可行
+2.在选票中
+

@@ -7,4 +7,7 @@ public class MessageType {
     public static byte COMMIT = 4;
     public static byte NOTIFY = 5;
     public static byte REPLICATION_ACK = 6;
+    public static byte COMMIT_ACK = 7;
+    public static byte LEADER = 8;
+    public static byte COMMAND = 9;
 }
