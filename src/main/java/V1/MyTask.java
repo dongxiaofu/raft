@@ -1,9 +1,8 @@
 package V1;
 
 import java.util.Queue;
-import java.util.TimerTask;
 
-public class MyTask  extends TimerTask {
+abstract public class MyTask {
     protected Node node;
     protected Queue<String> receivedMessage;
 
@@ -11,8 +10,5 @@ public class MyTask  extends TimerTask {
         this.node = node;
     }
 
-    @Override
-    public void run() {
-
-    }
+    abstract void start();
 }

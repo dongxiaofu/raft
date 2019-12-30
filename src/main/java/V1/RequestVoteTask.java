@@ -9,8 +9,8 @@ public class RequestVoteTask extends MyTask {
     }
 
     @Override
-    public void run() {
-//        System.out.println("RequestVoteTask\t" + System.currentTimeMillis());
+    public void start() {
+//        System.out.println("RequestVoteTask\t" + System.currentTimeMillis() + "\t" + node.getState());
         int oldTerm = node.getTerm();
         int newTerm = oldTerm + 1;
         node.setTerm(newTerm);

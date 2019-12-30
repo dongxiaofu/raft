@@ -49,7 +49,6 @@ public class Worker {
                 new ReceiveWorker().start();
 
                 System.out.println("start changed:\t" + node.isStateIsChanged());
-                new NodeStateWatchDog().start();
                 new TimerManger().start();
             }
         } catch (IOException e) {
@@ -190,9 +189,12 @@ public class Worker {
                     System.out.println("I am leader\t" + System.currentTimeMillis());
                     node.setPreState(node.getCurrentState());
                     node.setCurrentState(NodeState.FOLLOWER);
+                    node.setState(NodeState.FOLLOWER);
                     node.setStateIsChanged(node.checkNodeStateIsChanged());
+                    node.setPreReceiveHeartBeatTime(node.getCurrentReceiveHeartBeatTime());
+                    node.setCurrentReceiveHeartBeatTime(System.currentTimeMillis());
                 } else if (packet.getType() == MessageType.REQUEST_VOTE) {
-                    System.out.println("投票0\t" + "isVoted:" + node.isVoted() + "\tstate:" + node.getState());
+//                    System.out.println("投票0\t" + "isVoted:" + node.isVoted() + "\tstate:" + node.getState());
                     int candidateTerm = packet.getTerm();
                     int nodeTerm = packet.getTerm();
                     if ((candidateTerm >= nodeTerm) && (!node.isVoted())) {
@@ -235,6 +237,10 @@ public class Worker {
                     packet1.setHost("127.0.0.1");
                     packet1.setPort(node.getPort());
                     node.sendMessage(cgProtocal.encode(packet1));
+                } else if (packet.getType() == MessageType.EMPTY_HEART_BEAT) {
+                    System.out.println("EMPTY_HEART_BEAT\t" + System.currentTimeMillis());
+                    node.setPreReceiveHeartBeatTime(node.getCurrentReceiveHeartBeatTime());
+                    node.setCurrentReceiveHeartBeatTime(System.currentTimeMillis());
                 }
 
                 return messageLength;
@@ -245,76 +251,31 @@ public class Worker {
         }
     }
 
-    private class NodeStateWatchDog extends Thread {
-        @Override
-        public void run() {
-            while (true) {
-                try {
-                    System.out.println("start NodeStateWatchDog\t" + System.currentTimeMillis());
-                    node.startNodeStateWatchDog();
-                    sleep(10);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-
-            }
-        }
-    }
-
     private class TimerManger extends Thread {
-        private boolean isStart = true;
-
         @Override
         public void run() {
-            Timer timer = new Timer();
             while (true) {
-//                System.out.println("TimerManger -1\t" + System.currentTimeMillis() + "\t");
-                if (isStart) {
-//                    System.out.println("timer start");
-                    timer = startTimer();
+                MyTask myTask = null;
+                byte currentState = node.getCurrentState();
+                if (currentState == NodeState.CANDIDATE) {
+                    myTask = new RequestVoteTask(node);
+                } else if (currentState == NodeState.LEADER) {
+                    myTask = new HeartBeatTask(node, receivedMessage);
+                } else if (currentState == NodeState.FOLLOWER) {
+                    myTask = new LeaderIsAliveTask(node);
                 }
-                isStart = false;
-                try {
-//                    System.out.println("TimerManger 0" + "\t" + node.isStateIsChanged());
-                    if (node.isStateIsChanged()) {
-//                        System.out.println("TimerManger 1\t" + System.currentTimeMillis());
-                        node.setFlag(false);
-                        if (timer != null) {
-                            stopTimer(timer);
-                            System.out.println("stop timer");
-                        }
 
-                        isStart = true;
+                if(null != myTask){
+                    System.out.println("myTask\t" + currentState);
+                    myTask.start();
+                    Random random = new Random(50);
+                    try{
+                        sleep(500 + random.nextInt(50));
+                    }catch (InterruptedException e){
+                        e.printStackTrace();
                     }
-                    node.startTimerManager();
-                    sleep(50);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
                 }
             }
-        }
-
-        private Timer startTimer() {
-            MyTask myTask = null;
-            byte currentState = node.getCurrentState();
-            if (currentState == NodeState.CANDIDATE) {
-                myTask = new RequestVoteTask(node);
-            } else if (currentState == NodeState.LEADER) {
-                myTask = new HeartBeatTask(node, receivedMessage);
-            } else if (currentState == NodeState.FOLLOWER) {
-                myTask = new LeaderIsAliveTask(node);
-            }
-            Timer timer = new Timer();
-            if(null != myTask){
-                Random random = new Random(50);
-                timer.schedule(myTask, new Date(), 200 + random.nextInt(50));
-            }
-
-            return timer;
-        }
-
-        private void stopTimer(Timer timer) {
-            timer.cancel();
         }
     }
 

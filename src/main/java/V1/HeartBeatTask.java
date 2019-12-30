@@ -10,7 +10,7 @@ public  class HeartBeatTask extends MyTask {
     }
 
     @Override
-    public void run() {
+    public void start() {
         System.out.println("HeartBeatTask\t" + Thread.currentThread().getName());
         Packet packet = new Packet();
         packet.setTerm(node.getTerm());

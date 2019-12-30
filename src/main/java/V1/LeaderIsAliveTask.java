@@ -8,13 +8,13 @@ public class LeaderIsAliveTask extends MyTask {
     }
 
     @Override
-    public void run(){
+    public void start(){
 
         if(0 == node.getCurrentReceiveHeartBeatTime()){
            node.setCurrentReceiveHeartBeatTime(System.currentTimeMillis());
         }
-
-        if(node.getCurrentReceiveHeartBeatTime() - node.getPreReceiveHeartBeatTime() > 1000){
+        System.out.println("leader live\t" + node.getCurrentReceiveHeartBeatTime() + "\t" + node.getPreReceiveHeartBeatTime());
+        if(node.getCurrentReceiveHeartBeatTime() - node.getPreReceiveHeartBeatTime() > 2000){
             System.out.println("leader down\t" + System.currentTimeMillis() + "\t" + node.getCurrentState());
             node.setPreState(node.getCurrentState());
             node.setCurrentState(NodeState.CANDIDATE);
