@@ -9,7 +9,7 @@ public class RequestVoteTask extends MyTask {
     }
 
     @Override
-    public void start() {
+    public void start() throws IOException {
 //        System.out.println("RequestVoteTask\t" + System.currentTimeMillis() + "\t" + node.getState());
         int oldTerm = node.getTerm();
         int newTerm = oldTerm + 1;
@@ -20,10 +20,9 @@ public class RequestVoteTask extends MyTask {
         packet.setMessage("packet for me");
         packet.setHost("127.0.0.1");
         packet.setPort(node.getPort());
-        try{
-            node.sendRequestVote(packet);
-        }catch (IOException e){
-            e.printStackTrace();
-        }
+
+        node.sendRequestVote(packet);
+        node.setVoteCounter(1);
+        node.setVoted(true);
     }
 }

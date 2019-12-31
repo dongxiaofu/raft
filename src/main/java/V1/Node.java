@@ -25,6 +25,16 @@ public class Node {
     private HashMap<String, String> leaderInfo;
     private int port;
 
+    public int getVoteCounter() {
+        return voteCounter;
+    }
+
+    public void setVoteCounter(int voteCounter) {
+        this.voteCounter = voteCounter;
+    }
+
+    private int voteCounter = 0;
+
     private CgProtocal cgProtocal = new CgProtocal();
 
     public long getPreReceiveHeartBeatTime() {

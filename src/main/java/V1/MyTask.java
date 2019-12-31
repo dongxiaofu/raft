@@ -10,5 +10,5 @@ abstract public class MyTask {
         this.node = node;
     }
 
-    abstract void start();
+    abstract void start() throws Exception;
 }
